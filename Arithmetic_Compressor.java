@@ -1,7 +1,8 @@
 package Compress;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
+import java.math.RoundingMode;
+
 
 public class Arithmetic_Compressor implements Compressor
 {
@@ -9,74 +10,86 @@ public class Arithmetic_Compressor implements Compressor
 	@Override
 	public void Compress(String[] input_names, String[] output_names)
 	{
-		//initializing variables
 
-		int [] freq = new int [10]; 
-		BigDecimal[] probability = new BigDecimal[10];
-		BigDecimal cum_freq [] = new BigDecimal [10];
-
-		for (int i = 0; i < input_names[0].length(); i++)
+		for (int i = 0; i < input_names.length; i++)
 		{
-			freq [input_names[0].charAt(i)- 48]++;
+			//initializing variables
+			int [] freq = new int [10]; 
+			BigDecimal[] probability = new BigDecimal[10];
+			BigDecimal cum_freq [] = new BigDecimal [10];
+
+			for (int j = 0; j < input_names[i].length(); j++)
+			{
+				freq [input_names[i].charAt(j)- 48]++;
+			}
+			calculateProbability (freq,input_names[i].length(),probability);
+			calculateCumFreq(cum_freq, probability);
+
+			StringBuilder key = new StringBuilder();
+			key = codeApeerances(key, freq);
+			key.append(Integer.toBinaryString(input_names[i].length()));
+			while (key.length()%32 != 0)
+				key.insert(320, 0);
+
+			key.append(Encode(cum_freq,probability,freq,input_names[i]));
+			output_names[i] = key.toString();
 		}
-		calculateProbability (freq,input_names[0].length(),probability);
-		calculateCumFreq(cum_freq, probability);
-		String key = encode (cum_freq,probability,freq,input_names[0]);
-		output_names[0] = key;
 	}
-	
 
 	@Override
 	public void Decompress(String[] input_names, String[] output_names) {
-		//read the values
-		int freq [] = new int [10];
-		for (int i = 0; i < 10; i ++)
+		for (int i = 0; i < input_names.length; i++)
 		{
-			freq[i] = Integer.parseInt(input_names[0].substring(32*i, 32*(i+1)),2);
+			//read the values
+			int freq [] = new int [10];
+			for (int j = 0; j < 10; j ++)
+			{
+				freq[j] = Integer.parseInt(input_names[i].substring(32*j, 32*(j+1)),2);
+			}
+			int total = 0;
+			for (int j = 0; j < 10; j++)
+				total += freq[j];
+			String str_scale = input_names[i].substring(320, 352);
+			String str = input_names[i].substring(352);
+			int size = Integer.parseInt(str_scale, 2);
+
+			BigDecimal probability [] = new BigDecimal[10];
+			BigDecimal cum_freq [] = new BigDecimal [10];
+
+			calculateProbability(freq, total, probability);
+			calculateCumFreq(cum_freq, probability);
+
+			System.out.println(Decode(str, probability, cum_freq, size));
+			output_names[i] = Decode(str, probability, cum_freq, size);
 		}
-		int total = 0;
-		for (int i = 0; i < 10; i++)
-			total += freq[i];
-		String str_scale = input_names[0].substring(320, 352);
-		String str = input_names[0].substring(352);
-		int scale = Integer.parseInt(str_scale, 2);
-		
-		MathContext mc = new MathContext(scale);
-		BigDecimal key = reverseString(str, mc);
-		System.out.println(key.toString());
-		
-		BigDecimal probability [] = new BigDecimal[10];
-		BigDecimal cum_freq [] = new BigDecimal [10];
-		calculateProbability(freq, total, probability);
-		calculateCumFreq(cum_freq, probability);
-		System.out.println(decode(key,probability,cum_freq,scale));
 	}
-	private String decode (BigDecimal key, BigDecimal [] P, BigDecimal [] C,int length)
+	private String Decode (String key, BigDecimal [] P, BigDecimal [] C,int length)
 	{
 		StringBuilder ans = new StringBuilder();
 		BigDecimal high = BigDecimal.ONE;
 		BigDecimal low = BigDecimal.ZERO;
+
 		BigDecimal w, lowerBound, higherBound;
 		int j;
-		
+
 		for (int i = 0; i < length; i++)
 		{
+			BigDecimal bin = reverseString(key);
 			w = high.subtract(low);
 			for (j = 0; j < 10; j ++)
 			{
 				lowerBound = w.multiply(C[j]);
 				lowerBound = lowerBound.add(low);
 				//lowerBound = l + w*c[j]
-				
+
 				higherBound = C[j].add(P[j]);
 				higherBound = higherBound.multiply(w);
 				higherBound = higherBound.add(low);
 				//higherBound = l + w*(c[j]+p[j])
-				
-				if (key.compareTo(lowerBound) >= 0 && key.compareTo(higherBound) < 0)
+
+				if (bin.compareTo(lowerBound) >= 0 && bin.compareTo(higherBound) <0)
 				{
 					ans.append(j);
-					//ans.insert(0,j);
 					low = lowerBound;
 					//l = l + w*c[j]
 					high = low.add(w.multiply(P[j]));
@@ -85,15 +98,20 @@ public class Arithmetic_Compressor implements Compressor
 				}
 			}
 		}
-		
-		
-		
 		return ans.toString();
 	}
 	@Override
-	public byte[] CompressWithArray(String[] input_names, String[] output_names) {
-		// TODO Auto-generated method stub
-		return null;
+	public byte[] CompressWithArray(String[] input_names, String[] output_names) 
+	{
+		String half_answer[] = {""};
+		byte [] arr = new byte [half_answer.length/8];
+		Compress(input_names, half_answer); // get the binary string 
+		for (int i = 0; i < half_answer[0].length(); i = i+8)
+		{
+			arr [i/8] = (byte) Integer.parseInt(half_answer[0].substring(i, i+8),2);
+		}
+		return arr;
+		
 	}
 
 	@Override
@@ -118,26 +136,30 @@ public class Arithmetic_Compressor implements Compressor
 	{
 		for (int i = 0; i < 10; i++)
 		{
-			double temp = (double)arr[i]/(double)total;
-			probability[i] = new BigDecimal(Double.toString(temp));
-			//probability[i] =arr[i]/total;
+
+			probability[i] = new BigDecimal(arr[i]);
+			BigDecimal temp = new BigDecimal(total);
+			probability[i] = probability[i].divide(temp,2,RoundingMode.HALF_EVEN);
 		}
 	}
-	public String encode(BigDecimal [] C, BigDecimal [] P, int[] freq,String input)
+
+	private String Encode(BigDecimal [] C, BigDecimal [] P, int[] freq, String input)
 	{
 		//Initializing
-		BigDecimal key = BigDecimal.ZERO;
+		BigDecimal quarter = new BigDecimal("0.25");
+		BigDecimal half = new BigDecimal("0.5");
+		BigDecimal threequarters = new BigDecimal("0.75");
 		BigDecimal w = BigDecimal.ONE;
 		BigDecimal high = w;
 		BigDecimal low = BigDecimal.valueOf(0);
 		BigDecimal temp;
 		BigDecimal mult;
-		int i;
+		StringBuilder scale = new StringBuilder();
+		int i,counter=0;
 		for (i = 0;i <input.length(); i++)
 		{
-			//calculation itself
-			w = high;
-			w = w.subtract(low);
+			//calculation itself 
+			w = high.subtract(low);
 			//w = high - low
 
 			mult = w;
@@ -150,56 +172,60 @@ public class Arithmetic_Compressor implements Compressor
 			mult = mult.multiply(P[input.charAt(i)-48]);
 			high = temp.add(mult);
 			//R = L + w*P(x)
-		} 
-		MathContext mc = new MathContext(i);
-		temp = high.add(low);
-		key = temp;
-		key = key.divide(BigDecimal.valueOf(2));
-		key = key.setScale(mc.getPrecision(), BigDecimal.ROUND_HALF_UP);
-		System.out.println(key.toString());
-		
-		StringBuilder ans = new StringBuilder();
-		ans = codeApeerances(ans,freq);
-		
-		StringBuilder str_scale = new StringBuilder(Integer.toBinaryString(key.scale()));
-		while (str_scale.length() != 32)//ans should be 4 bytes exactly
-			str_scale.insert(0, "0");
-		ans.append(str_scale);
-		
-		//add the binary key to the end of the string
-		ans.append(keyToBinaryString(key));
-		return ans.toString();
-	}
-	
-	//Converts the key to binary string
-	private String keyToBinaryString(BigDecimal key)
-	{
-	//Initializing variables
-		int limit = (int) Math.pow(2, key.scale()+1);
-		StringBuilder val = new StringBuilder();
-		BigDecimal zero = new BigDecimal("0");
-		BigDecimal one = new BigDecimal("1");
-		BigDecimal two = new BigDecimal("2.0");
-		while (key.compareTo(zero) > 0)
-		{
-
-			if (val.length() >= 20000)//this should be our accuracy limit
-				return val.toString();
-
-			BigDecimal r = key.multiply(two);
-			if (r.compareTo(one) >= 0)   // If the ones-place digit >= 1
-			{
-				val.append("1");  // Concat a "1" to the end of the result string (val)
-				key = r.subtract(one); // Remove the 1 from the current fraction (n)
-			}
-			else
-			{
-				val.append("0");  // If the ones-place digit == 0 concat a "0" to the end of the result string (val)
-				key = r;  // Set the current fraction (n) to the new fraction
-			}
 		}
-		return val.toString();
+		boolean flag = true;
+
+		//scaling
+		while (flag)
+		{
+			if ( low.compareTo(BigDecimal.ZERO) >= 0 && high.compareTo(half) < 0) // lower half
+			{
+				low = low.multiply(BigDecimal.valueOf(2));
+				high = high.multiply(BigDecimal.valueOf(2));
+				scale.append(0);
+			}
+			else if (low.compareTo(half) >= 0 && high.compareTo(BigDecimal.ONE) <0) // upper half
+			{
+				scale.append(1);
+				low = low.subtract(half);
+				low = low.add(low); //(l = 2 *(l-0.5))
+				high = high.subtract(half);
+				high = high.add(high);// h = (h-0.5)
+			}
+			else if (low.compareTo(quarter) >= 0 && high.compareTo(threequarters) < 0 && low.compareTo(half) <= 0 && high.compareTo(half) >= 0) // middle half
+			{
+				counter++;
+				low = low.subtract(quarter);
+				low = low.add(low);// l = 2(l-0.25)
+				high = high.subtract(quarter);
+				high = high.add(high);//h = 2(h-0.25)
+			}
+			else if (low.compareTo(half) <= 0 && high.compareTo(threequarters) >= 0)
+			{
+				scale.append(1);
+				counter++;
+				for ( i = 0; i < counter; i++)
+					scale.append(0);
+				flag = false;
+			}
+			else if (low.compareTo(quarter) <= 0 && high.compareTo(half) >= 0)
+			{
+				scale.append(0);
+				counter++;
+				for ( i = 0; i < counter; i++)
+					scale.append(1);
+				flag = false;
+			}
+		} 
+		//key = high.add(low);
+		//key = key.divide(BigDecimal.valueOf(2));
+		//System.out.println(key.toString());
+
+		//int limit = (int)(Math.log(1/(high.subtract(low).doubleValue()))/Math.log(2));
+		//scale.append(keyToBinaryString(key,limit));
+		return scale.toString();
 	}
+
 	//code the freq to the string
 	private StringBuilder codeApeerances(StringBuilder ans, int[] freq) 
 	{
@@ -214,18 +240,15 @@ public class Arithmetic_Compressor implements Compressor
 	}
 
 	//reverse binary string to BigDecimal
-	private BigDecimal reverseString(String str,MathContext scale)
+	private BigDecimal reverseString(String str)
 	{
 		BigDecimal answer = new BigDecimal(0);
 		for (int i = 0; i < str.length(); i++)
 		{
 			BigDecimal temp = new BigDecimal(Double.toString((double)(str.charAt(i)-48)*Math.pow(0.5,i+1)));
 
-			//temp = temp.setScale(mc.getPrecision(), BigDecimal.ROUND_HALF_UP);
 			answer = answer.add(temp);			
 		}
-		answer = answer.setScale(scale.getPrecision(), BigDecimal.ROUND_HALF_UP);
-
 		return answer;
 
 	}
