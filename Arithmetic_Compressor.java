@@ -27,9 +27,6 @@ public class Arithmetic_Compressor implements Compressor
 
 			StringBuilder key = new StringBuilder();
 			key = codeApeerances(key, freq);
-			key.append(Integer.toBinaryString(input_names[i].length()));
-			while (key.length()%32 != 0)
-				key.insert(320, 0);
 
 			key.append(Encode(cum_freq,probability,freq,input_names[i]));
 			output_names[i] = key.toString();
@@ -49,9 +46,8 @@ public class Arithmetic_Compressor implements Compressor
 			int total = 0;
 			for (int j = 0; j < 10; j++)
 				total += freq[j];
-			String str_scale = input_names[i].substring(320, 352);
-			String str = input_names[i].substring(352);
-			int size = Integer.parseInt(str_scale, 2);
+			
+			String str = input_names[i].substring(320);
 
 			BigDecimal probability [] = new BigDecimal[10];
 			BigDecimal cum_freq [] = new BigDecimal [10];
@@ -59,8 +55,8 @@ public class Arithmetic_Compressor implements Compressor
 			calculateProbability(freq, total, probability);
 			calculateCumFreq(cum_freq, probability);
 
-			System.out.println(Decode(str, probability, cum_freq, size));
-			output_names[i] = Decode(str, probability, cum_freq, size);
+			output_names[i] = Decode(str, probability, cum_freq, total);
+			System.out.println(output_names[i]);
 		}
 	}
 	private String Decode (String key, BigDecimal [] P, BigDecimal [] C,int length)
@@ -71,10 +67,11 @@ public class Arithmetic_Compressor implements Compressor
 
 		BigDecimal w, lowerBound, higherBound;
 		int j;
-
+		BigDecimal bin = reverseString(key);
+		
 		for (int i = 0; i < length; i++)
 		{
-			BigDecimal bin = reverseString(key);
+
 			w = high.subtract(low);
 			for (j = 0; j < 10; j ++)
 			{
@@ -90,7 +87,7 @@ public class Arithmetic_Compressor implements Compressor
 				if (bin.compareTo(lowerBound) >= 0 && bin.compareTo(higherBound) <0)
 				{
 					ans.append(j);
-					low = lowerBound;
+					low = low.add(w.multiply(C[j]));
 					//l = l + w*c[j]
 					high = low.add(w.multiply(P[j]));
 					//high = low + w*p[j]
@@ -98,6 +95,7 @@ public class Arithmetic_Compressor implements Compressor
 				}
 			}
 		}
+
 		return ans.toString();
 	}
 	@Override
@@ -217,12 +215,6 @@ public class Arithmetic_Compressor implements Compressor
 				flag = false;
 			}
 		} 
-		//key = high.add(low);
-		//key = key.divide(BigDecimal.valueOf(2));
-		//System.out.println(key.toString());
-
-		//int limit = (int)(Math.log(1/(high.subtract(low).doubleValue()))/Math.log(2));
-		//scale.append(keyToBinaryString(key,limit));
 		return scale.toString();
 	}
 
@@ -245,13 +237,13 @@ public class Arithmetic_Compressor implements Compressor
 		BigDecimal answer = new BigDecimal(0);
 		for (int i = 0; i < str.length(); i++)
 		{
-			BigDecimal temp = new BigDecimal(Double.toString((double)(str.charAt(i)-48)*Math.pow(0.5,i+1)));
-
-			answer = answer.add(temp);			
+			if (str.charAt(i)-48 != 0)
+			{
+			BigDecimal temp = new BigDecimal((1/Math.pow(2,i+1)));
+			answer = answer.add(temp);	
+			}
 		}
 		return answer;
 
 	}
-
-
 }
